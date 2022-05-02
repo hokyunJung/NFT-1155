@@ -11,14 +11,12 @@ contract SaleNftToken {
         xcube = Xcube(_xcubeTokenAddress);
     }
 
-    uint256[] private onSaleWorkArray; //판매 중인 작품...
-    mapping(uint256 => bool) private isOnSaleWork;
+    uint256[] private onSaleWorkIdsArray; //판매 중인 작품 Ids...
+    //mapping(uint256 => bool) private isOnSaleWorkId; // onSaleWorkIdsArray에 포함되었는가?
+    mapping(uint256 => uint256) private onSaleCountOfworkIds; //해당 작품을 판매 중인 사용자 수
     mapping(uint256 => Xcube.SaleInfo[]) private saleWorkInfos; //판매 중인 작품의 판매 정보
     mapping(address => uint256[]) private onSaleWorkOfAddress;// 주소가 팔고 있는 리스트 필요
     mapping(address => mapping(uint256 => uint256)) private onSaleCountOfWorks;// 주소가 팔고 있는 작품의 판매중 인 갯수
-    
-    //uint256[] private onSaleEditionArray; //판매중인 에디션리스트...필요
-
 
     //work 를 팔기 위해 사용
     function setForSaleWork(uint256 _workId, uint256 _numberOfSales, uint256 _salePrice) public {
@@ -28,34 +26,26 @@ contract SaleNftToken {
 
         uint256 balance = xcube.balanceOf(msg.sender, _workId);
         require(balance != 0, "You have not Work.");
-        uint256 saleCountOfWork = onSaleCountOfWorks[msg.sender][_workId]; //이미 해당 작품으로 팔고 있는 갯수
+        uint256 saleCountOfWork = onSaleCountOfWorks[msg.sender][_workId]; //소유자가 이미 해당 작품으로 팔고 있는 갯수
         uint256 lastAmount = balance - saleCountOfWork; //판매가능한 양
         require(lastAmount >= _numberOfSales, "You have not enough amount."); //판매가능한 개수가 판매하려는 개수보다 크거나 같아야한다.
         
-        addSaleWorkArray(_workId);
-        saleWorkInfos[_workId].push(Xcube.SaleInfo(msg.sender, _numberOfSales, _salePrice));
+        addSaleWorkIdsArray(_workId);
+        saleWorkInfos[_workId].push(Xcube.SaleInfo(_workId, msg.sender, _numberOfSales, _salePrice));
         onSaleWorkOfAddress[msg.sender].push(_workId);
         onSaleCountOfWorks[msg.sender][_workId] = _numberOfSales;
     }
 
-    function addSaleWorkArray(uint _workId) private {
-        if(containsOfIsOnSaleWork(_workId) == false) {
-            onSaleWorkArray.push(_workId);
-            setIsOnSaleWork(_workId);
+    function addSaleWorkIdsArray(uint _workId) private {
+        if(onSaleCountOfworkIds[_workId] == 0) {
+            onSaleWorkIdsArray.push(_workId);
+            onSaleCountOfworkIds[_workId] = 1;
         }
     }
 
-    function setIsOnSaleWork(uint256 _workId) private {
-        isOnSaleWork[_workId]=true;
-    }
-
-    function containsOfIsOnSaleWork(uint256 _workId) view private returns (bool){
-        return isOnSaleWork[_workId];
-    }
-
     //판매중인 작품 리스트
-    function getOnSaleWorkArray() view public returns (uint256[] memory) {
-        return onSaleWorkArray;
+    function getOnSaleWorkIdsArray() view public returns (uint256[] memory) {
+        return onSaleWorkIdsArray;
     }
 
     //판매중인 작품의 판매 정보 개수
