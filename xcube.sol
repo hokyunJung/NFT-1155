@@ -14,11 +14,11 @@ contract Xcube is ERC1155 {
     SaleNftToken public saleNftToken;
     address admin;
 
-    mapping (address => uint256[]) private assetsOfOwner; // 주소가 소유한 작품 리스트
-    mapping (uint256 => Work) private workInfos; //작품의 정보들
+    mapping (address => uint256[]) private worksOfOwner; // 주소가 소유한 작품 리스트
+    mapping (address => mapping(uint256 => WorkInfo) private workInfosOfOwner; // 주소가 소유한 작품 상세 리스트
+    mapping (uint256 => Work) private works; //작품의 정보들
     
     struct Work {
-        uint256 workId;
         string category;
         string subject;
         address creater;
@@ -26,6 +26,7 @@ contract Xcube is ERC1155 {
     }
 
     struct WorkInfo {
+        uint256 workId;
         address owner;
         uint256 currentHaveAmount;
         uint256 currentPrice;
