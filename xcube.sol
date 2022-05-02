@@ -23,8 +23,12 @@ contract Xcube is ERC1155 {
         string subject;
         address creater;
         uint256 totalAmount;
-        uint256 currentAmount;
-        uint256 price;
+    }
+
+    struct WorkInfo {
+        address owner;
+        uint256 currentHaveAmount;
+        uint256 currentPrice;
     }
 
     struct SaleInfo {
