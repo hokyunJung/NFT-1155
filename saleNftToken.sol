@@ -19,13 +19,13 @@ contract SaleNftToken {
     event purchase(address seller, address buyer, uint256 orderId, uint256 workId, uint256 saleAmount, uint256 buyAmout, uint256 salePrice, uint256 buyPrice);
     event ableSellAmout(uint256 saleAbleAmount);
 
-    function getMaxSaleCountOfWorks(uint256 _workId) view public returns (uint256) {
-        uint256 res = maxSaleCountOfWorks[msg.sender][_workId]; //이게 왜자꾸 0이지...??
+    function getMaxSaleCountOfWorks(address owner, uint256 _workId) view public returns (uint256) {
+        uint256 res = maxSaleCountOfWorks[owner][_workId];
         return res;
     }
 
-    function setMaxSaleCountOfWorks(uint256 _workId, uint256 totalAmount) public {
-        maxSaleCountOfWorks[msg.sender][_workId] = totalAmount;
+    function setMaxSaleCountOfWorks(address owner, uint256 _workId, uint256 totalAmount) public {
+        maxSaleCountOfWorks[owner][_workId] = totalAmount;
     }
 
     //work 를 팔기 위해 사용
@@ -35,21 +35,17 @@ contract SaleNftToken {
         require(_salePrice > 0, "salePrice is is must hight than zero.");
 
 
-        uint256 maxSaleAmount = maxSaleCountOfWorks[msg.sender][_workId]; //소유자가 해당 작품으로 팔수 있는 갯수
-        emit ableSellAmout(maxSaleAmount);
-        //uint256 saleAbleAmount = maxSaleAmount - _saleAmount; //판매가능한 양
-        //emit ableSellAmout(saleAbleAmount);
+        uint256 maxSaleAmount = getMaxSaleCountOfWorks(msg.sender, _workId); //소유자가 해당 작품으로 팔수 있는 갯수
+        require(maxSaleAmount >= _saleAmount, "You don't sell Works becuase you have not enough balance.1");
+        uint256 saleAbleAmount = maxSaleAmount - _saleAmount; //판매가능한 양
+        require(saleAbleAmount >= 0, "You don't sell Works becuase you have not enough balance.2");
 
-        //require(saleAbleAmount > 1, "You don't sell Works becuase you have not enough balance.");
-/*
         emit ableSellAmout(saleAbleAmount);
-
-        maxSaleCountOfWorks[msg.sender][_workId] = saleAbleAmount; //쵀대 판매 가능 수 수정
+        setMaxSaleCountOfWorks(msg.sender, _workId, saleAbleAmount); //쵀대 판매 가능 수 수정
         uint orderId = uint(keccak256(abi.encode(block.timestamp, msg.sender, _salePrice)));
         addOnSaleOrderIds(orderId); //판매중 리스트에 orderId 넣기
         onSaleInfos[orderId] = Xcube.OnSaleInfo(orderId, _workId, msg.sender, _saleAmount, _salePrice); //판매 중 리스트 상세정보 넣기
         onSaleInfosOfAddress[msg.sender][orderId] = Xcube.OnSaleInfo(orderId, _workId, msg.sender, _saleAmount, _salePrice); //주소가 팔고 있는 리스트에 넣기
-*/
     }
 
     function addOnSaleOrderIds(uint256 _orderId) private {
@@ -81,22 +77,32 @@ contract SaleNftToken {
     }
 
     //NFT 를 사기 위해 사용
-    function purchaseWork(uint256 _orderId, uint256 _amout) public payable {
-        require(_amout > 0, "amount must is high than zero");
+    function purchaseWork(uint256 _orderId, uint256 _amount) public payable {
+        require(_amount > 0, "amount must is high than zero");
         Xcube.OnSaleInfo memory saleInfo = onSaleInfos[_orderId];
         require(saleInfo.seller != msg.sender, "You are this NFT token owner.");
         require(saleInfo.saleAmount != 0, "This saleAmout is invalid value");
+        require(saleInfo.saleAmount >= _amount, "your buyAmout over saleAmount");
+        require(msg.value >= _amount * saleInfo.salePrice, "your pay not enough");
+        
 
-        removeOnSaleOrderIds(_orderId); //판매 중인 orderIds에서 제거
-        delete onSaleInfos[_orderId]; //판매 상세 목록에서 제거
-        delete onSaleInfosOfAddress[saleInfo.seller][_orderId]; //해당주소가 팔고 있는 정보 삭제
+        if (saleInfo.saleAmount != _amount) {
+            //갯수를 다르게 산다면...
+            onSaleInfos[_orderId] = Xcube.OnSaleInfo(saleInfo.orderId, saleInfo.workId, saleInfo.seller, saleInfo.saleAmount - _amount, saleInfo.salePrice);
+            onSaleInfosOfAddress[saleInfo.seller][saleInfo.orderId] = Xcube.OnSaleInfo(saleInfo.orderId, saleInfo.workId, saleInfo.seller, saleInfo.saleAmount - _amount, saleInfo.salePrice);
+        } else {
+            //같다면.. 다 산거니까..
+            removeOnSaleOrderIds(_orderId); //판매 중인 orderIds에서 제거    
+            delete onSaleInfos[_orderId]; //판매 상세 목록에서 제거
+            delete onSaleInfosOfAddress[saleInfo.seller][_orderId]; //해당주소가 팔고 있는 정보 삭제
+        }
         
         //event purchase(address seller, address buyer, uint256 orderId, uint256 workId, uint256 saleAmount, uint256 buyAmout, uint256 salePrice, uint256 buyPrice);
-        emit purchase(saleInfo.seller, msg.sender, _orderId, saleInfo.workId, saleInfo.saleAmount, _amout, saleInfo.salePrice, msg.value);
+        emit purchase(saleInfo.seller, msg.sender, _orderId, saleInfo.workId, saleInfo.saleAmount, _amount, saleInfo.salePrice, msg.value);
 
         payable(saleInfo.seller).transfer(msg.value);
-        xcube.safeTransferFrom(saleInfo.seller, msg.sender, saleInfo.workId, _amout, "");
-        maxSaleCountOfWorks[saleInfo.seller][saleInfo.workId] = xcube.balanceOf(saleInfo.seller, saleInfo.workId);
+        xcube.safeTransferFrom(saleInfo.seller, msg.sender, saleInfo.workId, _amount, "");
+        
     }
     
 }
