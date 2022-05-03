@@ -14,9 +14,9 @@ contract Xcube is ERC1155 {
     SaleNftToken public saleNftToken;
     address admin;
 
-    mapping (address => uint256[]) private workIdsOfOwner; // 주소가 소유한 작품 리스트
-    mapping (address => mapping(uint256 => WorkDetail)) private workDetailsOfOwner; // 주소가 소유한 작품 상세 리스트
-    mapping (uint256 => Work) private workInfos; //작품의 정보들
+    mapping (address => uint256[]) private worksOfOwner; // 주소가 소유한 작품ID
+    mapping (address => mapping(uint256 => WorkDetail)) private workDetailsOfOwner; // 주소가 소유한 작품ID의 상세정보
+    mapping (uint256 => Work) private workInfos; //작품의 정보들...
     
     struct Work {
         string category;
@@ -32,10 +32,11 @@ contract Xcube is ERC1155 {
         uint256 currentPrice;
     }
 
-    struct SaleInfo {
+    struct OnSaleInfo {
+        uint orderId;
         uint256 workId;
         address seller;
-        uint256 numberOfSales;
+        uint256 saleAmount;
         uint256 salePrice;
     }
 
@@ -58,9 +59,10 @@ contract Xcube is ERC1155 {
         payable(admin).transfer(msg.value);
         _setTokenUri(newItemId, tokenURI);
 
-        workIdsOfOwner[msg.sender].push(newItemId);
+        worksOfOwner[msg.sender].push(newItemId);
         workInfos[newItemId] = Work(_category, _subject, msg.sender, _totalAmount);
         workDetailsOfOwner[msg.sender][newItemId] = WorkDetail(newItemId, msg.sender, _totalAmount, msg.value);
+        saleNftToken.setMaxSaleCountOfWorks(newItemId, _totalAmount);
 
         return newItemId;
     }
@@ -72,7 +74,7 @@ contract Xcube is ERC1155 {
 
     //주소가 가지고 있는 자산들..
     function getWorkOfOwner(address _owner) view public returns (WorkDetail[] memory) {
-        uint256[] memory workIds = workIdsOfOwner[_owner];
+        uint256[] memory workIds = worksOfOwner[_owner];
         uint256 totalBalance = 0;
         for (uint256 i = 0; i < workIds.length; i++) {
             uint256 balance = balanceOf(_owner, workIds[i]);
@@ -89,19 +91,12 @@ contract Xcube is ERC1155 {
     }
 
     //판매 중인 Works 가져오기
-    function getSaleOnWorks() view public returns (SaleInfo[] memory) {
-        uint256[] memory onSaleWorks = saleNftToken.getOnSaleWorkIdsArray(); //판매중인 작품 ID들..
-        uint256 totalSaleInfos = 0;
-        for (uint256 i = 0; i < onSaleWorks.length; i++) {
-            totalSaleInfos += saleNftToken.getOnSaleWorkInfoSize(onSaleWorks[i]);
-        }
+    function getSaleOnWorks() view public returns (OnSaleInfo[] memory) {
+        uint256[] memory onSaleOrderIds = saleNftToken.getOnSaleOrderIds(); //판매중인 작품 ID들..
         
-        SaleInfo[] memory saleInfos = new SaleInfo[](totalSaleInfos);
-        for(uint256 i = 0; i < totalSaleInfos; i++) {
-            SaleInfo[] memory infos = saleNftToken.getOnSaleWorkInfo(onSaleWorks[i]);
-            for (uint256 j = 0; j < infos.length; j++) {
-               saleInfos[i] = infos[j];
-            }
+        OnSaleInfo[] memory saleInfos = new OnSaleInfo[](onSaleOrderIds.length);
+        for(uint256 i = 0; i < onSaleOrderIds.length; i++) {
+            saleInfos[i] = saleNftToken.getOnSaleWorkInfo(onSaleOrderIds[i]);
         }
         return saleInfos;
     }
