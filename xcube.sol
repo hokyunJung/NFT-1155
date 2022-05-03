@@ -37,7 +37,7 @@ contract Xcube is ERC1155 {
         uint256 workId;
         address seller;
         uint256 saleAmount;
-        uint256 salePrice;
+        uint256 salePrice; //개당가격으로 하자...
     }
 
     constructor() ERC1155("Willd") {
@@ -62,7 +62,7 @@ contract Xcube is ERC1155 {
         worksOfOwner[msg.sender].push(newItemId);
         workInfos[newItemId] = Work(_category, _subject, msg.sender, _totalAmount);
         workDetailsOfOwner[msg.sender][newItemId] = WorkDetail(newItemId, msg.sender, _totalAmount, msg.value);
-        saleNftToken.setMaxSaleCountOfWorks(newItemId, _totalAmount);
+        saleNftToken.setMaxSaleCountOfWorks(msg.sender, newItemId, _totalAmount);
 
         return newItemId;
     }
