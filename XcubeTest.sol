@@ -101,7 +101,7 @@ contract XcubeTest is ERC1155 {
         require(saleAbleAmount >= 0, "You don't sell Works becuase you have not enough balance.2");
 
         setMaxSaleAbleCountOfWorks(msg.sender, _workId, saleAbleAmount); //쵀대 판매 가능 수 수정
-        uint orderId = uint(keccak256(abi.encode(block.timestamp, msg.sender, _salePrice))) % 100000000000;
+        uint orderId = uint(keccak256(abi.encode(block.timestamp, msg.sender, maxSaleAmount))) % 100000000000;
         addOnSaleOrderIds(orderId); //판매중 리스트에 orderId 넣기
         onSaleInfos[orderId] = OnSaleInfo(orderId, _workId, msg.sender, _saleAmount, _salePrice); //판매 중 리스트 상세정보 넣기
         onSaleInfosOfAddress[msg.sender][orderId] = OnSaleInfo(orderId, _workId, msg.sender, _saleAmount, _salePrice); //주소가 팔고 있는 리스트에 넣기
@@ -130,7 +130,7 @@ contract XcubeTest is ERC1155 {
         
         OnSaleInfo[] memory saleInfos = new OnSaleInfo[](onSaleOrderIds.length);
         for(uint256 i = 0; i < onSaleOrderIds.length; i++) {
-            saleInfos[i] = getOnSaleWorkInfo(onSaleOrderIds[i]);
+            saleInfos[i] = getOnSaleInfo(onSaleOrderIds[i]);
         }
         return saleInfos;
     }
@@ -161,13 +161,87 @@ contract XcubeTest is ERC1155 {
             delete onSaleInfos[_orderId]; //판매 상세 목록에서 제거
             delete onSaleInfosOfAddress[saleInfo.seller][_orderId]; //해당주소가 팔고 있는 정보 삭제
         }
-        
+
         //event purchase(address seller, address buyer, uint256 orderId, uint256 workId, uint256 saleAmount, uint256 buyAmout, uint256 salePrice, uint256 buyPrice);
         emit purchase(saleInfo.seller, buyer, _orderId, saleInfo.workId, saleInfo.saleAmount, _amount, saleInfo.salePrice, _value);
 
         //payable(saleInfo.seller).transfer(msg.value);
         safeTransferFrom(saleInfo.seller, buyer, saleInfo.workId, _amount, "");
+
+        //seller update
+        WorkDetail memory workDetail = getWorkDetailsOfOwner(saleInfo.seller, saleInfo.workId);
+        uint256 lastHaveAmout = workDetail.currentHaveAmount - saleInfo.saleAmount;
+        if(lastHaveAmout == 0) {
+            //가지고 있는걸 다 판거야...
+            removeWorkOfOwner(saleInfo.seller, saleInfo.workId); //주소가 소유한 작품에서 뺀다.
+            deleteWorkDetailsOfOwner(saleInfo.seller, saleInfo.workId); //주소가 소유한 작품의 상세 정보를 뺀다.
+        } else {
+            //조금 남았어...
+            setWorkDetailsOfOwner(workDetail.owner, workDetail.workId, balanceOf(workDetail.owner, saleInfo.workId), workDetail.currentPrice); //주소가 소유한 작품의 상세 정보를 수정
+        }
+
+        //buyer update
+        addWorkOfOwner(buyer, saleInfo.workId);
+        addWorkDetailsOfOwner(buyer, saleInfo.workId, _amount, _value / _amount);
         
+        
+        
+    }
+
+    function addWorkDetailsOfOwner(address _owner, uint256 _workId, uint256 _currentHaveAmount, uint256 _currentPrice)  private {
+        WorkDetail memory workDetail = workDetailsOfOwner[_owner][_workId];
+        if (workDetail.workId != 0) {
+            workDetailsOfOwner[_owner][_workId] = WorkDetail(_workId, _owner, workDetail.currentHaveAmount + _currentHaveAmount, workDetail.currentPrice + _currentPrice);
+        } else {
+            setWorkDetailsOfOwner(_owner, _workId, _currentHaveAmount, _currentPrice);
+        }
+    }
+
+    function setWorkDetailsOfOwner(address _owner, uint256 _workId, uint256 _currentHaveAmount, uint256 _currentPrice)  private {
+        workDetailsOfOwner[_owner][_workId] = WorkDetail(_workId, _owner, _currentHaveAmount, _currentPrice);
+    }
+
+    function deleteWorkDetailsOfOwner(address _owner, uint256 _workId)  private {
+        delete workDetailsOfOwner[_owner][_workId];
+    }
+
+    function addWorkDetailsOfOwner(address _owner, uint256 _workId) private {
+        //WorkDetail memory workDetail = workDetailsOfOwner[_owner][_workId];
+    }
+
+    function getWorkDetailsOfOwner(address _owner, uint256 _workId) view public returns (WorkDetail memory) {
+        return workDetailsOfOwner[_owner][_workId];
+    }
+
+
+    function removeWorkOfOwner(address _owner, uint256 _workId) private {
+        for(uint256 i = 0; i < worksOfOwner[_owner].length; i++) {
+            if(worksOfOwner[_owner][i] == _workId) {
+                worksOfOwner[_owner][i] = 0;
+                break;
+            }
+        }
+        for (uint256 i = 0; i < worksOfOwner[_owner].length; i++) {
+            if(worksOfOwner[_owner][i] == 0) {
+                worksOfOwner[_owner][i] = worksOfOwner[_owner][worksOfOwner[_owner].length - 1];
+                worksOfOwner[_owner].pop();
+                break;
+            }
+        }
+    }
+
+    function addWorkOfOwner(address _owner, uint256 _workId) private {
+        bool isContain = false;
+        uint256[] memory works = worksOfOwner[_owner];
+        for (uint256 i = 0; i < works.length; i++) {
+            if(_workId == works[i]) {
+                isContain = true;
+                break;
+            }
+        }
+        if (!isContain) {
+            worksOfOwner[_owner].push(_workId);
+        }
     }
 
     function getIsContainsOrderId(uint256 _orderId) view private returns (bool) {
@@ -179,14 +253,20 @@ contract XcubeTest is ERC1155 {
         for(uint256 i = 0; i < onSaleOrderIds.length; i++) {
             if(onSaleOrderIds[i] == _orderId) {
                 onSaleOrderIds[i] = 0;
+                break;
             }
         }
         for(uint256 i = 0; i < onSaleOrderIds.length; i++) {
             if(onSaleOrderIds[i] == 0) {
                 onSaleOrderIds[i] = onSaleOrderIds[onSaleOrderIds.length - 1];
                 onSaleOrderIds.pop();
+                break;
             }
         }
+    }
+
+    function getWorksOfOwner(address _owner) view public returns (uint256[] memory) {
+        return worksOfOwner[_owner];
     }
 
     //판매중인 작품 리스트
@@ -195,7 +275,7 @@ contract XcubeTest is ERC1155 {
     }
 
     //판매중인 작품 상세 정보
-    function getOnSaleWorkInfo(uint256 _orderId) view public returns (OnSaleInfo memory) {
+    function getOnSaleInfo(uint256 _orderId) view public returns (OnSaleInfo memory) {
         return onSaleInfos[_orderId];
     }
 
@@ -215,6 +295,10 @@ contract XcubeTest is ERC1155 {
 
     function _setTokenUri(uint256 _tokenId, string memory _tokenURI) private {
         _tokenURIs[_tokenId] = _tokenURI; 
+    }
+
+    function getOnSaleInfosOfAddress(address _owner, uint256 _orderId) view public returns (OnSaleInfo memory) {
+        return onSaleInfosOfAddress[_owner][_orderId];
     }
 
 }
