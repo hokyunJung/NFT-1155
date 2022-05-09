@@ -3,7 +3,6 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
-import "@openzeppelin/contracts/utils/Strings.sol";
 import "./SaleNftToken.sol";
 
 contract Xcube is ERC1155 {
@@ -47,30 +46,25 @@ contract Xcube is ERC1155 {
     event mintInfo(address owner, string tokenURI, string category, string subject, uint256 totalAmount);
 
     //자산 민트..
-    function mintNFT(string memory tokenURI, string memory _category, string memory _subject, uint256 _totalAmount) payable public returns (uint256){
+    function mintNFT(string memory _tokenURI, string memory _category, string memory _subject, uint256 _totalAmount) payable public returns (uint256){
         require(msg.value > 0, "You must send ether for minting.");
 
         _tokenIds.increment();
         uint256 newItemId = _tokenIds.current();
 
-        emit mintInfo(msg.sender, tokenURI, _category, _subject, _totalAmount);
+        emit mintInfo(msg.sender, _tokenURI, _category, _subject, _totalAmount);
 
         _mint(msg.sender, newItemId, _totalAmount, "");
         payable(admin).transfer(msg.value);
-        _setTokenUri(newItemId, tokenURI);
+        _setTokenUri(newItemId, _tokenURI);
 
         worksOfOwner[msg.sender].push(newItemId);
         workInfos[newItemId] = Work(_category, _subject, msg.sender, _totalAmount);
         workDetailsOfOwner[msg.sender][newItemId] = WorkDetail(newItemId, msg.sender, _totalAmount, msg.value);
-        saleNftToken.setMaxSaleCountOfWorks(msg.sender, newItemId, _totalAmount);
+        saleNftToken.setMaxSaleAbleCountOfWorks(msg.sender, newItemId, _totalAmount);
 
         return newItemId;
     }
-
-    function _setTokenUri(uint256 tokenId, string memory tokenURI) private {
-        _tokenURIs[tokenId] = tokenURI; 
-    }
-
 
     //주소가 가지고 있는 자산들..
     function getWorkOfOwner(address _owner) view public returns (WorkDetail[] memory) {
@@ -96,7 +90,7 @@ contract Xcube is ERC1155 {
         
         OnSaleInfo[] memory saleInfos = new OnSaleInfo[](onSaleOrderIds.length);
         for(uint256 i = 0; i < onSaleOrderIds.length; i++) {
-            saleInfos[i] = saleNftToken.getOnSaleWorkInfo(onSaleOrderIds[i]);
+            saleInfos[i] = saleNftToken.getOnSaleInfo(onSaleOrderIds[i]);
         }
         return saleInfos;
     }
@@ -109,18 +103,59 @@ contract Xcube is ERC1155 {
     //실행 가능한 권한 설정 : setApprovalForAll -> 지갑선택 -> operator : SALENFTTOKEN AT 주소, approved : true
     //실행 가능한 권한 보기 : isApprovalForAll -> setApprovalForAll -> 해당 지갑이 true/false 인지...
     //판매 등록 : setForSaleNftToken -> 지갑선택 -> _nftTokenId : key, _price : 1
-/*
-    function _beforeTokenTransfer(address from, address to, uint256 tokenId) internal override(ERC721, ERC721Enumerable) {
-        super._beforeTokenTransfer(from, to, tokenId);
+
+    function _setTokenUri(uint256 tokenId, string memory tokenURI) private {
+        _tokenURIs[tokenId] = tokenURI; 
     }
-    function _burn(uint256 tokenId) internal override(ERC721, ERC721URIStorage) {
-        super._burn(tokenId);
+
+    function getWorkDetailsOfOwner(address _owner, uint256 _workId) view public returns (WorkDetail memory) {
+        return workDetailsOfOwner[_owner][_workId];
     }
-    function tokenURI(uint256 tokenId) public view override(ERC721, ERC721URIStorage) returns (string memory) {
-        return super.tokenURI(tokenId);
+
+    function removeWorkOfOwner(address _owner, uint256 _workId) public {
+        for(uint256 i = 0; i < worksOfOwner[_owner].length; i++) {
+            if(worksOfOwner[_owner][i] == _workId) {
+                worksOfOwner[_owner][i] = 0;
+                break;
+            }
+        }
+        for (uint256 i = 0; i < worksOfOwner[_owner].length; i++) {
+            if(worksOfOwner[_owner][i] == 0) {
+                worksOfOwner[_owner][i] = worksOfOwner[_owner][worksOfOwner[_owner].length - 1];
+                worksOfOwner[_owner].pop();
+                break;
+            }
+        }
     }
-    function supportsInterface(bytes4 interfaceId) public view override(ERC721, ERC721Enumerable) returns (bool) {
-        return super.supportsInterface(interfaceId);
+
+    function deleteWorkDetailsOfOwner(address _owner, uint256 _workId) public {
+        delete workDetailsOfOwner[_owner][_workId];
     }
-*/
+
+    function setWorkDetailsOfOwner(address _owner, uint256 _workId, uint256 _currentHaveAmount, uint256 _currentPrice) public {
+        workDetailsOfOwner[_owner][_workId] = WorkDetail(_workId, _owner, _currentHaveAmount, _currentPrice);
+    }
+
+    function addWorkOfOwner(address _owner, uint256 _workId) public {
+        bool isContain = false;
+        uint256[] memory works = worksOfOwner[_owner];
+        for (uint256 i = 0; i < works.length; i++) {
+            if(_workId == works[i]) {
+                isContain = true;
+                break;
+            }
+        }
+        if (!isContain) {
+            worksOfOwner[_owner].push(_workId);
+        }
+    }
+
+    function addWorkDetailsOfOwner(address _owner, uint256 _workId, uint256 _currentHaveAmount, uint256 _currentPrice) public {
+        WorkDetail memory workDetail = workDetailsOfOwner[_owner][_workId];
+        if (workDetail.workId != 0) {
+            setWorkDetailsOfOwner(_owner, _workId, workDetail.currentHaveAmount + _currentHaveAmount, workDetail.currentPrice + _currentPrice);
+        } else {
+            setWorkDetailsOfOwner(_owner, _workId, _currentHaveAmount, _currentPrice);
+        }
+    }
 }
