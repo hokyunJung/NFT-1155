@@ -18,6 +18,7 @@ contract Xcube is ERC1155 {
     mapping (uint256 => Work) private workInfos; //작품의 정보들...
     
     struct Work {
+        string tokenURI;
         string category;
         string subject;
         address creater;
@@ -59,7 +60,7 @@ contract Xcube is ERC1155 {
         _setTokenUri(newItemId, _tokenURI);
 
         worksOfOwner[msg.sender].push(newItemId);
-        workInfos[newItemId] = Work(_category, _subject, msg.sender, _totalAmount);
+        workInfos[newItemId] = Work(_tokenURI, _category, _subject, msg.sender, _totalAmount);
         workDetailsOfOwner[msg.sender][newItemId] = WorkDetail(newItemId, msg.sender, _totalAmount, msg.value);
         saleNftToken.setMaxSaleAbleCountOfWorks(msg.sender, newItemId, _totalAmount);
 
@@ -108,11 +109,11 @@ contract Xcube is ERC1155 {
         _tokenURIs[tokenId] = tokenURI; 
     }
 
-    function getWorkDetailsOfOwner(address _owner, uint256 _workId) view public returns (WorkDetail memory) {
+    function getWorkDetailsOfOwner(address _owner, uint256 _workId) view external returns (WorkDetail memory) {
         return workDetailsOfOwner[_owner][_workId];
     }
 
-    function removeWorkOfOwner(address _owner, uint256 _workId) public {
+    function removeWorkOfOwner(address _owner, uint256 _workId) external {
         for(uint256 i = 0; i < worksOfOwner[_owner].length; i++) {
             if(worksOfOwner[_owner][i] == _workId) {
                 worksOfOwner[_owner][i] = 0;
@@ -128,15 +129,15 @@ contract Xcube is ERC1155 {
         }
     }
 
-    function deleteWorkDetailsOfOwner(address _owner, uint256 _workId) public {
+    function deleteWorkDetailsOfOwner(address _owner, uint256 _workId) external {
         delete workDetailsOfOwner[_owner][_workId];
     }
 
-    function setWorkDetailsOfOwner(address _owner, uint256 _workId, uint256 _currentHaveAmount, uint256 _currentPrice) public {
+    function setWorkDetailsOfOwner(address _owner, uint256 _workId, uint256 _currentHaveAmount, uint256 _currentPrice) external {
         workDetailsOfOwner[_owner][_workId] = WorkDetail(_workId, _owner, _currentHaveAmount, _currentPrice);
     }
 
-    function addWorkOfOwner(address _owner, uint256 _workId) public {
+    function addWorkOfOwner(address _owner, uint256 _workId) external {
         bool isContain = false;
         uint256[] memory works = worksOfOwner[_owner];
         for (uint256 i = 0; i < works.length; i++) {
@@ -150,12 +151,16 @@ contract Xcube is ERC1155 {
         }
     }
 
-    function addWorkDetailsOfOwner(address _owner, uint256 _workId, uint256 _currentHaveAmount, uint256 _currentPrice) public {
+    function addWorkDetailsOfOwner(address _owner, uint256 _workId, uint256 _currentHaveAmount, uint256 _currentPrice) external {
         WorkDetail memory workDetail = workDetailsOfOwner[_owner][_workId];
         if (workDetail.workId != 0) {
-            setWorkDetailsOfOwner(_owner, _workId, workDetail.currentHaveAmount + _currentHaveAmount, workDetail.currentPrice + _currentPrice);
+            this.setWorkDetailsOfOwner(_owner, _workId, workDetail.currentHaveAmount + _currentHaveAmount, workDetail.currentPrice + _currentPrice);
         } else {
-            setWorkDetailsOfOwner(_owner, _workId, _currentHaveAmount, _currentPrice);
+            this.setWorkDetailsOfOwner(_owner, _workId, _currentHaveAmount, _currentPrice);
         }
+    }
+
+    function getWorkInfos(uint256 _workId) view public returns (Work memory) {
+        return workInfos[_workId];
     }
 }
