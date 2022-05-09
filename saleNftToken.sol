@@ -28,7 +28,7 @@ contract SaleNftToken {
         uint256 saleAbleAmount = maxSaleAmount - _saleAmount; //판매가능한 양
         require(saleAbleAmount >= 0, "You don't sell Works becuase you have not enough balance.2");
 
-        setMaxSaleAbleCountOfWorks(msg.sender, _workId, saleAbleAmount); //쵀대 판매 가능 수 수정
+        this.setMaxSaleAbleCountOfWorks(msg.sender, _workId, saleAbleAmount); //쵀대 판매 가능 수 수정
         uint orderId = uint(keccak256(abi.encode(block.timestamp, msg.sender, maxSaleAmount))) % 100000000000;
         addOnSaleOrderIds(orderId); //판매중 리스트에 orderId 넣기
         onSaleInfos[orderId] = Xcube.OnSaleInfo(orderId, _workId, msg.sender, _saleAmount, _salePrice); //판매 중 리스트 상세정보 넣기
@@ -49,7 +49,7 @@ contract SaleNftToken {
         removeOnSaleOrderIds(_orderId); //판매 중인 orderIds에서 제거    
         delete onSaleInfos[_orderId]; //판매 상세 목록에서 제거
         delete onSaleInfosOfAddress[saleInfo.seller][_orderId]; //해당주소가 팔고 있는 정보 삭제
-        setMaxSaleAbleCountOfWorks(saleInfo.seller, saleInfo.workId, saleInfo.saleAmount); //최대 판매 가능 개수 수정
+        this.setMaxSaleAbleCountOfWorks(saleInfo.seller, saleInfo.workId, saleInfo.saleAmount); //최대 판매 가능 개수 수정
     }
 
 
@@ -99,25 +99,25 @@ contract SaleNftToken {
         //buyer update
         xcube.addWorkOfOwner(msg.sender, saleInfo.workId);
         xcube.addWorkDetailsOfOwner(msg.sender, saleInfo.workId, _amount, msg.value / _amount);
-        setMaxSaleAbleCountOfWorks(msg.sender, workDetail.workId, _amount);
+        this.setMaxSaleAbleCountOfWorks(msg.sender, workDetail.workId, _amount);
     }
 
-    function getMaxSaleAbleCountOfWorks(address owner, uint256 _workId) view public returns (uint256) {
+    function getMaxSaleAbleCountOfWorks(address owner, uint256 _workId) view private returns (uint256) {
         uint256 res = maxSaleAbleCountOfWorks[owner][_workId];
         return res;
     }
 
-    function setMaxSaleAbleCountOfWorks(address owner, uint256 _workId, uint256 _amount) public {
+    function setMaxSaleAbleCountOfWorks(address owner, uint256 _workId, uint256 _amount) external {
         maxSaleAbleCountOfWorks[owner][_workId] = _amount;
     }
 
     //판매중인 작품 리스트
-    function getOnSaleOrderIds() view public returns (uint256[] memory) {
+    function getOnSaleOrderIds() view external returns (uint256[] memory) {
         return onSaleOrderIds;
     }
 
     //판매중인 작품 상세 정보
-    function getOnSaleInfo(uint256 _orderId) view public returns (Xcube.OnSaleInfo memory) {
+    function getOnSaleInfo(uint256 _orderId) view external returns (Xcube.OnSaleInfo memory) {
         return onSaleInfos[_orderId];
     }
     
