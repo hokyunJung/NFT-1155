@@ -1,166 +1,151 @@
 // SPDX-License-Identifier: MIT
+
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/utils/Counters.sol";
-import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
-import "./SaleNftToken.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
-contract Xcube is ERC1155 {
-    mapping (uint256 => string) private _tokenURIs;   //We create the mapping for TokenID -> URI
-    using Counters for Counters.Counter;
-    Counters.Counter private _tokenIds;
+import "./Willld.sol";
 
-    SaleNftToken public saleNftToken;
-    address admin;
+contract SaleNftToken {
+    Willld public willld;
 
-    mapping (address => uint256[]) private worksOfOwner; // 주소가 소유한 작품ID
-    mapping (address => mapping(uint256 => WorkDetail)) private workDetailsOfOwner; // 주소가 소유한 작품ID의 상세정보
-    mapping (uint256 => Work) private workInfos; //작품의 정보들...
-    
-    struct Work {
-        string tokenURI;
-        string category;
-        string subject;
-        address creater;
-        uint256 totalAmount;
+    constructor (address _xcubeTokenAddress) {
+        willld = Willld(_xcubeTokenAddress);
     }
 
-    struct WorkDetail {
-        uint256 workId;
-        address owner;
-        uint256 currentHaveAmount;
-        uint256 currentPrice;
+    uint256[] private onSaleOrderIds; //판매 중인 orderIds
+    mapping(uint256 => bool) private isContainsOrderId; //onSaleOrderIds에 orderId가 있는가?
+    mapping(uint256 => Willld.OnSaleInfo) private onSaleInfos; //판매 중인 작품의 판매 정보
+    mapping(address => mapping(uint256 => Willld.OnSaleInfo)) private onSaleInfosOfAddress;// 주소가 팔고 있는 리스트
+    mapping(address => mapping(uint256 => uint256)) private maxSaleAbleCountOfWorks;// 주소가 가진 작품의 최대 판매 가능 수
+
+    event SaleWork(uint256 orderId);
+
+    //NFT 를 팔기 위해 사용
+    function setForSaleWork(uint256 _workId, uint256 _saleAmount, uint256 _salePrice) public returns(uint256) {
+        uint256 maxSaleAmount = getMaxSaleAbleCountOfWorks(msg.sender, _workId); //소유자가 해당 작품으로 팔수 있는 갯수
+        require(maxSaleAmount >= _saleAmount, "You don't sell Works becuase you have not enough balance.1");
+        uint256 saleAbleAmount = maxSaleAmount - _saleAmount; //판매가능한 양
+        require(saleAbleAmount >= 0, "You don't sell Works becuase you have not enough balance.2");
+
+        this.setMaxSaleAbleCountOfWorks(msg.sender, _workId, saleAbleAmount); //쵀대 판매 가능 수 수정
+        uint orderId = uint(keccak256(abi.encode(block.timestamp, msg.sender, maxSaleAmount))) % 100000000000;
+        addOnSaleOrderIds(orderId); //판매중 리스트에 orderId 넣기
+        onSaleInfos[orderId] = Willld.OnSaleInfo(orderId, _workId, msg.sender, _saleAmount, _salePrice); //판매 중 리스트 상세정보 넣기
+        onSaleInfosOfAddress[msg.sender][orderId] = Willld.OnSaleInfo(orderId, _workId, msg.sender, _saleAmount, _salePrice); //주소가 팔고 있는 리스트에 넣기
+
+        emit SaleWork(orderId);
+        return orderId;
     }
 
-    struct OnSaleInfo {
-        uint orderId;
-        uint256 workId;
-        address seller;
-        uint256 saleAmount;
-        uint256 salePrice; //개당가격으로 하자...
+    //NFT 판매 취소
+    function setCancelForSale(uint256 _orderId) public {
+        require(getIsContainsOrderId(_orderId), string(abi.encodePacked("This orderId not exist : ", Strings.toString(_orderId))));
+        Willld.OnSaleInfo memory saleInfo = onSaleInfos[_orderId];
+
+        require(saleInfo.seller == msg.sender, "You are not NFT token owner.");
+        require(willld.isApprovedForAll(msg.sender, address(this)), "NFT token owner did not approve SaleNftToken.");
+
+        removeOnSaleOrderIds(_orderId); //판매 중인 orderIds에서 제거    
+        delete onSaleInfos[_orderId]; //판매 상세 목록에서 제거
+        delete onSaleInfosOfAddress[saleInfo.seller][_orderId]; //해당주소가 팔고 있는 정보 삭제
+        this.setMaxSaleAbleCountOfWorks(saleInfo.seller, saleInfo.workId, saleInfo.saleAmount); //최대 판매 가능 개수 수정
     }
 
-    constructor() ERC1155("Willd") {
-        admin = msg.sender;
-    }
 
-    event mintInfo(address owner, string tokenURI, string category, string subject, uint256 totalAmount);
-
-    //자산 민트..
-    function mintNFT(string memory _tokenURI, string memory _category, string memory _subject, uint256 _totalAmount) payable public returns (uint256){
-        require(msg.value > 0, "You must send ether for minting.");
-
-        _tokenIds.increment();
-        uint256 newItemId = _tokenIds.current();
-
-        emit mintInfo(msg.sender, _tokenURI, _category, _subject, _totalAmount);
-
-        _mint(msg.sender, newItemId, _totalAmount, "");
-        payable(admin).transfer(msg.value);
-        _setTokenUri(newItemId, _tokenURI);
-
-        worksOfOwner[msg.sender].push(newItemId);
-        workInfos[newItemId] = Work(_tokenURI, _category, _subject, msg.sender, _totalAmount);
-        workDetailsOfOwner[msg.sender][newItemId] = WorkDetail(newItemId, msg.sender, _totalAmount, msg.value);
-        saleNftToken.setMaxSaleAbleCountOfWorks(msg.sender, newItemId, _totalAmount);
-
-        return newItemId;
-    }
-
-    //주소가 가지고 있는 자산들..
-    function getWorkOfOwner(address _owner) view public returns (WorkDetail[] memory) {
-        uint256[] memory workIds = worksOfOwner[_owner];
-        uint256 totalBalance = 0;
-        for (uint256 i = 0; i < workIds.length; i++) {
-            uint256 balance = balanceOf(_owner, workIds[i]);
-            totalBalance += balance;
-        }
-        require(totalBalance != 0, "Owner did not have work.");
-
-        WorkDetail[] memory workLists = new WorkDetail[](workIds.length);
-        for (uint256 i = 0; i < workIds.length; i++) {
-            workLists [i] = workDetailsOfOwner[_owner][workIds[i]];
-        }
-
-        return workLists;
-    }
-
-    //판매 중인 Works 가져오기
-    function getSaleOnWorks() view public returns (OnSaleInfo[] memory) {
-        uint256[] memory onSaleOrderIds = saleNftToken.getOnSaleOrderIds(); //판매중인 작품 ID들..
+    event purchase(address seller, address buyer, uint256 orderId, uint256 workId, uint256 saleAmount, uint256 buyAmout, uint256 salePrice, uint256 buyPrice);
+    //NFT 를 사기 위해 사용
+    function purchaseWork(uint256 _orderId, uint256 _amount) public payable {
+        require(getIsContainsOrderId(_orderId), string(abi.encodePacked("This orderId not exist : ", Strings.toString(_orderId))));
+        require(_amount > 0, "amount must is high than zero");
+        Willld.OnSaleInfo memory saleInfo = onSaleInfos[_orderId];
+        require(saleInfo.seller != msg.sender, "You are this NFT token owner.");
+        require(saleInfo.saleAmount != 0, "This saleAmout is invalid value");
+        require(saleInfo.saleAmount >= _amount, "your buyAmout over saleAmount");
+        require(msg.value >= _amount * saleInfo.salePrice, "your pay not enough");
         
-        OnSaleInfo[] memory saleInfos = new OnSaleInfo[](onSaleOrderIds.length);
-        for(uint256 i = 0; i < onSaleOrderIds.length; i++) {
-            saleInfos[i] = saleNftToken.getOnSaleInfo(onSaleOrderIds[i]);
+        
+        if (saleInfo.saleAmount != _amount) {
+            //갯수를 다르게 산다면...
+            onSaleInfos[_orderId] = Willld.OnSaleInfo(saleInfo.orderId, saleInfo.workId, saleInfo.seller, saleInfo.saleAmount - _amount, saleInfo.salePrice);
+            onSaleInfosOfAddress[saleInfo.seller][saleInfo.orderId] = Willld.OnSaleInfo(saleInfo.orderId, saleInfo.workId, saleInfo.seller, saleInfo.saleAmount - _amount, saleInfo.salePrice);
+            
+        } else {
+            //같다면.. 다 산거니까..
+            
+            removeOnSaleOrderIds(_orderId); //판매 중인 orderIds에서 제거    
+            delete onSaleInfos[_orderId]; //판매 상세 목록에서 제거
+            delete onSaleInfosOfAddress[saleInfo.seller][_orderId]; //해당주소가 팔고 있는 정보 삭제
         }
-        return saleInfos;
+
+        //event purchase(address seller, address buyer, uint256 orderId, uint256 workId, uint256 saleAmount, uint256 buyAmout, uint256 salePrice, uint256 buyPrice);
+        emit purchase(saleInfo.seller, msg.sender, _orderId, saleInfo.workId, saleInfo.saleAmount, _amount, saleInfo.salePrice, msg.value);
+
+        payable(saleInfo.seller).transfer(msg.value);
+        willld.safeTransferFrom(saleInfo.seller, msg.sender, saleInfo.workId, _amount, "");
+
+        //seller update
+        Willld.WorkDetail memory workDetail = willld.getWorkDetailsOfOwner(saleInfo.seller, saleInfo.workId);
+        uint256 lastHaveAmout = workDetail.currentHaveAmount - saleInfo.saleAmount;
+        if(lastHaveAmout == 0) {
+            //가지고 있는걸 다 판거야...
+            willld.removeWorkOfOwner(saleInfo.seller, saleInfo.workId); //주소가 소유한 작품에서 뺀다.
+            willld.deleteWorkDetailsOfOwner(saleInfo.seller, saleInfo.workId); //주소가 소유한 작품의 상세 정보를 뺀다.
+        } else {
+            //조금 남았어...
+            willld.setWorkDetailsOfOwner(workDetail.owner, workDetail.workId, willld.balanceOf(workDetail.owner, saleInfo.workId), workDetail.currentPrice); //주소가 소유한 작품의 상세 정보를 수정
+        }
+
+        //buyer update
+        willld.addWorkOfOwner(msg.sender, saleInfo.workId);
+        willld.addWorkDetailsOfOwner(msg.sender, saleInfo.workId, _amount, msg.value / _amount);
+        this.setMaxSaleAbleCountOfWorks(msg.sender, workDetail.workId, _amount);
+    }
+
+    function getMaxSaleAbleCountOfWorks(address owner, uint256 _workId) view private returns (uint256) {
+        uint256 res = maxSaleAbleCountOfWorks[owner][_workId];
+        return res;
+    }
+
+    function setMaxSaleAbleCountOfWorks(address owner, uint256 _workId, uint256 _amount) external {
+        maxSaleAbleCountOfWorks[owner][_workId] = _amount;
+    }
+
+    //판매중인 작품 리스트
+    function getOnSaleOrderIds() view external returns (uint256[] memory) {
+        return onSaleOrderIds;
+    }
+
+    //판매중인 작품 상세 정보
+    function getOnSaleInfo(uint256 _orderId) view external returns (Willld.OnSaleInfo memory) {
+        return onSaleInfos[_orderId];
     }
     
-    //xcube와 saleNftToken을 이어준다.
-    function setSaleNftToken(address _saleNftToken) public {
-        require(admin == msg.sender, "You not admin.");
-        saleNftToken = SaleNftToken(_saleNftToken);
-    }
-    //실행 가능한 권한 설정 : setApprovalForAll -> 지갑선택 -> operator : SALENFTTOKEN AT 주소, approved : true
-    //실행 가능한 권한 보기 : isApprovalForAll -> setApprovalForAll -> 해당 지갑이 true/false 인지...
-    //판매 등록 : setForSaleNftToken -> 지갑선택 -> _nftTokenId : key, _price : 1
-
-    function _setTokenUri(uint256 tokenId, string memory tokenURI) private {
-        _tokenURIs[tokenId] = tokenURI; 
+    function addOnSaleOrderIds(uint256 _orderId) private {
+        isContainsOrderId[_orderId] = true;
+        onSaleOrderIds.push(_orderId);
     }
 
-    function getWorkDetailsOfOwner(address _owner, uint256 _workId) view external returns (WorkDetail memory) {
-        return workDetailsOfOwner[_owner][_workId];
+    function getIsContainsOrderId(uint256 _orderId) view private returns (bool) {
+        return isContainsOrderId[_orderId];
     }
 
-    function removeWorkOfOwner(address _owner, uint256 _workId) external {
-        for(uint256 i = 0; i < worksOfOwner[_owner].length; i++) {
-            if(worksOfOwner[_owner][i] == _workId) {
-                worksOfOwner[_owner][i] = 0;
+    function removeOnSaleOrderIds(uint256 _orderId) private {
+        delete isContainsOrderId[_orderId];
+        for(uint256 i = 0; i < onSaleOrderIds.length; i++) {
+            if(onSaleOrderIds[i] == _orderId) {
+                onSaleOrderIds[i] = 0;
                 break;
             }
         }
-        for (uint256 i = 0; i < worksOfOwner[_owner].length; i++) {
-            if(worksOfOwner[_owner][i] == 0) {
-                worksOfOwner[_owner][i] = worksOfOwner[_owner][worksOfOwner[_owner].length - 1];
-                worksOfOwner[_owner].pop();
+        for(uint256 i = 0; i < onSaleOrderIds.length; i++) {
+            if(onSaleOrderIds[i] == 0) {
+                onSaleOrderIds[i] = onSaleOrderIds[onSaleOrderIds.length - 1];
+                onSaleOrderIds.pop();
                 break;
             }
         }
     }
 
-    function deleteWorkDetailsOfOwner(address _owner, uint256 _workId) external {
-        delete workDetailsOfOwner[_owner][_workId];
-    }
-
-    function setWorkDetailsOfOwner(address _owner, uint256 _workId, uint256 _currentHaveAmount, uint256 _currentPrice) external {
-        workDetailsOfOwner[_owner][_workId] = WorkDetail(_workId, _owner, _currentHaveAmount, _currentPrice);
-    }
-
-    function addWorkOfOwner(address _owner, uint256 _workId) external {
-        bool isContain = false;
-        uint256[] memory works = worksOfOwner[_owner];
-        for (uint256 i = 0; i < works.length; i++) {
-            if(_workId == works[i]) {
-                isContain = true;
-                break;
-            }
-        }
-        if (!isContain) {
-            worksOfOwner[_owner].push(_workId);
-        }
-    }
-
-    function addWorkDetailsOfOwner(address _owner, uint256 _workId, uint256 _currentHaveAmount, uint256 _currentPrice) external {
-        WorkDetail memory workDetail = workDetailsOfOwner[_owner][_workId];
-        if (workDetail.workId != 0) {
-            this.setWorkDetailsOfOwner(_owner, _workId, workDetail.currentHaveAmount + _currentHaveAmount, workDetail.currentPrice + _currentPrice);
-        } else {
-            this.setWorkDetailsOfOwner(_owner, _workId, _currentHaveAmount, _currentPrice);
-        }
-    }
-
-    function getWorkInfos(uint256 _workId) view public returns (Work memory) {
-        return workInfos[_workId];
-    }
+    
 }
