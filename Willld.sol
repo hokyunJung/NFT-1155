@@ -18,6 +18,7 @@ contract Willld is ERC1155 {
     mapping (uint256 => Work) private workInfos; //작품의 정보들...
     
     struct Work {
+        uint256 workId;
         string tokenURI;
         string category;
         string subject;
@@ -44,7 +45,7 @@ contract Willld is ERC1155 {
         admin = msg.sender;
     }
 
-    event mintInfo(address owner, string tokenURI, string category, string subject, uint256 totalAmount);
+    event mintInfo(uint256 workId, address owner, string tokenURI, string category, string subject, uint256 totalAmount);
 
     //자산 민트..
     function mintNFT(string memory _tokenURI, string memory _category, string memory _subject, uint256 _totalAmount) payable public returns (uint256){
@@ -53,7 +54,7 @@ contract Willld is ERC1155 {
         _tokenIds.increment();
         uint256 newItemId = _tokenIds.current();
 
-        emit mintInfo(msg.sender, _tokenURI, _category, _subject, _totalAmount);
+        emit mintInfo(newItemId, msg.sender, _tokenURI, _category, _subject, _totalAmount);
 
         _mint(msg.sender, newItemId, _totalAmount, "");
         payable(admin).transfer(msg.value);
