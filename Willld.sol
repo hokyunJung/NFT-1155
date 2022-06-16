@@ -61,7 +61,7 @@ contract Willld is ERC1155 {
         _setTokenUri(newItemId, _tokenURI);
 
         worksOfOwner[msg.sender].push(newItemId);
-        workInfos[newItemId] = Work(_tokenURI, _category, _subject, msg.sender, _totalAmount);
+        workInfos[newItemId] = Work(newItemId, _tokenURI, _category, _subject, msg.sender, _totalAmount);
         workDetailsOfOwner[msg.sender][newItemId] = WorkDetail(newItemId, msg.sender, _totalAmount, msg.value);
         saleNftToken.setMaxSaleAbleCountOfWorks(msg.sender, newItemId, _totalAmount);
 
